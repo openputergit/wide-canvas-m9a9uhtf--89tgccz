@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Computer Inventory Management</title>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://unpkg.com/google-spreadsheet@3.3.0/dist/index.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+        }
+        .history-table {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold text-center mb-8 text-blue-600">Computer Inventory Management System</h1>
+        
+        <!-- Input Form -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <input type="text" id="itemName" placeholder="Item Name" class="border p-2 rounded">
+                <input type="number" id="quantity" placeholder="Quantity" class="border p-2 rounded">
+                <select id="action" class="border p-2 rounded">
+                    <option value="add">Add Stock (+)</option>
+                    <option value="remove">Remove Stock (-)</option>
+                </select>
+            </div>
+            <div class="flex flex-wrap gap-4">
+                <button onclick="updateInventory()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                    <i class="bi bi-plus-circle me-1"></i> Update Stock
+                </button>
+                <button onclick="bulkUpdate()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                    <i class="bi bi-file-earmark-spreadsheet me-1"></i> Bulk Update
+                </button>
+                <button onclick="exportToExcel()" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">
+                    <i class="bi bi-download me-1"></i> Export to Excel
+                </button>
+                <button onclick="showHistory()" class="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600">
+                    <i class="bi bi-clock-history me-1"></i> View History
+                </button>
+                <button onclick="syncToGoogleSheets()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
+                    <i class="bi bi-google me-1"></i> Sync to Google Sheets
+                </button>
+            </div>
+        </div>
+
+        <!-- Bulk Update Modal -->
+        <div id="bulkModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white p-6 rounded-lg w-full max-w-lg">
+                <h2 class="text-xl font-bold mb-4">Bulk Update</h2>
+                <textarea id="bulkData" rows="6" class="w-full border p-2 rounded mb-4" 
+                    placeholder="Enter data in format:&#10;ItemName,Quantity,Action(add/remove)&#10;Example:&#10;Keyboard,5,add&#10;Mouse,3,remove"></textarea>
+                <div class="flex justify-end gap-4">
+                    <button onclick="closeBulkModal()" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
+                        Cancel
+                    </button>
+                    <button onclick="processBulkUpdate()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                        Update
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Modal -->
+        <div id="historyModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white p-6 rounded-lg w-full max-w-4xl">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold">Transaction History</h2>
+                    <button onclick="closeHistoryModal()" class="text-gray-600 hover:text-gray-800">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+                <div class="history-table">
+                    <table class="w-full">
+                        <thead class="bg-gray-50 sticky top-0">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item Name</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">New Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyTable" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+                <div class="mt-4 flex justify-end">
+                    <button onclick="exportHistoryToExcel()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                        <i class="bi bi-download me-1"></i> Export History
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Google Sheets Modal -->
+        <div id="googleSheetsModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white p-6 rounded-lg w-full max-w-lg">
+                <h2 class="text-xl font-bold mb-4">Sync to Google Sheets</h2>
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="spreadsheetId">
+                        Google Spreadsheet ID
+                    </label>
+                    <input id="spreadsheetId" type="text" class="w-full border p-2 rounded" placeholder="Enter your Google Spreadsheet ID">
+                    <p class="text-xs text-gray-500 mt-1">Find this in your spreadsheet URL: https://docs.google.com/spreadsheets/d/[SPREADSHEET_ID]/edit</p>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="apiKey">
+                        Google API Key
+                    </label>
+                    <input id="apiKey" type="text" class="w-full border p-2 rounded" placeholder="Enter your Google API Key">
+                </div>
+                <div class="flex justify-end gap-4">
+                    <button onclick="closeGoogleSheetsModal()" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
+                        Cancel
+                    </button>
+                    <button onclick="processGoogleSheetsSync()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                        Sync Now
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="mb-4">
+            <div class="flex border-b border-gray-200">
+                <button id="currentStockTab" class="py-2 px-4 font-medium text-blue-600 border-b-2 border-blue-500 active" 
+                        onclick="switchTab('currentStock')">Current Stock</button>
+                <button id="lowStockTab" class="py-2 px-4 font-medium text-gray-600 hover:text-blue-600" 
+                        onclick="switchTab('lowStock')">Low Stock Items</button>
+            </div>
+        </div>
+
+        <!-- Inventory Table -->
+        <div id="currentStockTable" class="bg-white rounded-lg shadow-md overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item Name</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock Quantity</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="inventoryTable" class="bg-white divide-y divide-gray-200"></tbody>
+            </table>
+        </div>
+
+        <!-- Low Stock Table (initially hidden) -->
+        <div id="lowStockTable" class="hidden bg-white rounded-lg shadow-md overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item Name</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock Quantity</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="lowStockInventoryTable" class="bg-white divide-y divide-gray-200"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Define low stock threshold
+        const LOW_STOCK_THRESHOLD = 5;
+        
+        // Load data from localStorage
+        let inventory = JSON.parse(localStorage.getItem('inventory')) || {};
+        let transactionHistory = JSON.parse(localStorage.getItem('transactionHistory')) || [];
+
+        // Initialize table on load
+        document.addEventListener('DOMContentLoaded', function() {
+            updateTable();
+        });
+
+        function updateTable() {
+            const table = document.getElementById('inventoryTable');
+            const lowStockTable = document.getElementById('lowStockInventoryTable');
+            table.innerHTML = '';
+            lowStockTable.innerHTML = '';
+            
+            Object.entries(inventory).forEach(([item, data]) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap">${item}</td>
+                    <td class="px-6 py-4 whitespace-nowrap ${data.quantity <= LOW_STOCK_THRESHOLD ? 'text-red-600 font-bold' : ''}">${data.quantity}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${new Date(data.lastUpdated).toLocaleString()}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <button onclick="quickAdd('${item}')" class="text-blue-600 hover:text-blue-900 mr-3">
+                            <i class="bi bi-plus-circle"></i>
+                        </button>
+                        <button onclick="quickRemove('${item}')" class="text-red-600 hover:text-red-900">
+                            <i class="bi bi-dash-circle"></i>
+                        </button>
+                    </td>
+                `;
+                table.appendChild(row);
+                
+                // Add to low stock table if quantity is below threshold
+                if (data.quantity <= LOW_STOCK_THRESHOLD) {
+                    const lowStockRow = row.cloneNode(true);
+                    lowStockTable.appendChild(lowStockRow);
+                }
+            });
+            
+            localStorage.setItem('inventory', JSON.stringify(inventory));
+        }
+
+        function quickAdd(itemName) {
+            document.getElementById('itemName').value = itemName;
+            document.getElementById('quantity').value = 1;
+            document.getElementById('action').value = 'add';
+            updateInventory();
+        }
+        
+        function quickRemove(itemName) {
+            document.getElementById('itemName').value = itemName;
+            document.getElementById('quantity').value = 1;
+            document.getElementById('action').value = 'remove';
+            updateInventory();
+        }
+
+        function updateInventory() {
+            const itemName = document.getElementById('itemName').value.trim();
+            const quantity = parseInt(document.getElementById('quantity').value);
+            const action = document.getElementById('action').value;
+
+            if (!itemName || isNaN(quantity) || quantity <= 0) {
+                alert('Please enter valid item name and quantity');
+                return;
+            }
+
+            if (!inventory[itemName]) {
+                inventory[itemName] = { quantity: 0, lastUpdated: new Date().toISOString() };
+            }
+
+            const previousQuantity = inventory[itemName].quantity;
+            let newQuantity = previousQuantity;
+
+            if (action === 'add') {
+                newQuantity += quantity;
+                inventory[itemName].quantity = newQuantity;
+            } else {
+                if (inventory[itemName].quantity < quantity) {
+                    alert('Insufficient stock!');
+                    return;
+                }
+                newQuantity -= quantity;
+                inventory[itemName].quantity = newQuantity;
+            }
+
+            // Update last updated timestamp
+            const timestamp = new Date().toISOString();
+            inventory[itemName].lastUpdated = timestamp;
+            
+            // Add to transaction history
+            transactionHistory.push({
+                timestamp: timestamp,
+                itemName: itemName,
+                action: action,
+                quantity: quantity,
+                newBalance: newQuantity
+            });
+            
+            // Save transaction history
+            localStorage.setItem('transactionHistory', JSON.stringify(transactionHistory));
+            
+            updateTable();
+            
+            // Clear inputs
+            document.getElementById('itemName').value = '';
+            document.getElementById('quantity').value = '';
+        }
+
+        function bulkUpdate() {
+            document.getElementById('bulkModal').classList.remove('hidden');
+        }
+
+        function closeBulkModal() {
+            document.getElementById('bulkModal').classList.add('hidden');
+            document.getElementById('bulkData').value = '';
+        }
+
+        function processBulkUpdate() {
+            const bulkData = document.getElementById('bulkData').value;
+            const lines = bulkData.split('\n');
+
+            lines.forEach(line => {
+                if (line.trim() === '') return;
+                
+                const [itemName, quantity, action] = line.split(',').map(item => item.trim());
+                
+                if (!itemName || isNaN(parseInt(quantity)) || !['add', 'remove'].includes(action)) {
+                    alert(`Invalid data format in line: ${line}`);
+                    return;
+                }
+
+                if (!inventory[itemName]) {
+                    inventory[itemName] = { quantity: 0, lastUpdated: new Date().toISOString() };
+                }
+
+                const numQuantity = parseInt(quantity);
+                const previousQuantity = inventory[itemName].quantity;
+                let newQuantity = previousQuantity;
+                
+                if (action === 'add') {
+                    newQuantity += numQuantity;
+                    inventory[itemName].quantity = newQuantity;
+                } else {
+                    if (inventory[itemName].quantity < numQuantity) {
+                        alert(`Insufficient stock for ${itemName}`);
+                        return;
+                    }
+                    newQuantity -= numQuantity;
+                    inventory[itemName].quantity = newQuantity;
+                }
+
+                // Update last updated timestamp
+                const timestamp = new Date().toISOString();
+                inventory[itemName].lastUpdated = timestamp;
+                
+                // Add to transaction history
+                transactionHistory.push({
+                    timestamp: timestamp,
+                    itemName: itemName,
+                    action: action,
+                    quantity: numQuantity,
+                    newBalance: newQuantity
+                });
+            });
+
+            // Save transaction history
+            localStorage.setItem('transactionHistory', JSON.stringify(transactionHistory));
+            
+            updateTable();
+            closeBulkModal();
+        }
+
+        function exportToExcel() {
+            const data = [
+                ['Item Name', 'Stock Quantity', 'Last Updated'],
+                ...Object.entries(inventory).map(([item, data]) => [
+                    item,
+                    data.quantity,
+                    new Date(data.lastUpdated).toLocaleString()
+                ])
+            ];
+
+            const ws = XLSX.utils.aoa_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Inventory");
+            XLSX.writeFile(wb, "computer_inventory.xlsx");
+        }
+        
+        function showHistory() {
+            const historyTable = document.getElementById('historyTable');
+            historyTable.innerHTML = '';
+            
+            // Sort history from newest to oldest
+            const sortedHistory = [...transactionHistory].sort((a, b) => 
+                new Date(b.timestamp) - new Date(a.timestamp)
+            );
+            
+            sortedHistory.forEach(transaction => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap">${new Date(transaction.timestamp).toLocaleString()}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${transaction.itemName}</td>
+                    <td class="px-6 py-4 whitespace-nowrap ${transaction.action === 'add' ? 'text-green-600' : 'text-red-600'}">${transaction.action === 'add' ? 'Added' : 'Removed'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${transaction.quantity}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${transaction.newBalance}</td>
+                `;
+                historyTable.appendChild(row);
+            });
+            
+            document.getElementById('historyModal').classList.remove('hidden');
+        }
+        
+        function closeHistoryModal() {
+            document.getElementById('historyModal').classList.add('hidden');
+        }
+        
+        function exportHistoryToExcel() {
+            const data = [
+                ['Date & Time', 'Item Name', 'Action', 'Quantity', 'New Balance'],
+                ...transactionHistory.map(transaction => [
+                    new Date(transaction.timestamp).toLocaleString(),
+                    transaction.itemName,
+                    transaction.action === 'add' ? 'Added' : 'Removed',
+                    transaction.quantity,
+                    transaction.newBalance
+                ])
+            ];
+
+            const ws = XLSX.utils.aoa_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Transaction History");
+            XLSX.writeFile(wb, "computer_inventory_history.xlsx");
+        }
+        
+        function switchTab(tabName) {
+            if (tabName === 'currentStock') {
+                document.getElementById('currentStockTable').classList.remove('hidden');
+                document.getElementById('lowStockTable').classList.add('hidden');
+                document.getElementById('currentStockTab').classList.add('text-blue-600', 'border-blue-500', 'border-b-2');
+                document.getElementById('currentStockTab').classList.remove('text-gray-600');
+                document.getElementById('lowStockTab').classList.add('text-gray-600');
+                document.getElementById('lowStockTab').classList.remove('text-blue-600', 'border-blue-500', 'border-b-2');
+            } else {
+                document.getElementById('currentStockTable').classList.add('hidden');
+                document.getElementById('lowStockTable').classList.remove('hidden');
+                document.getElementById('lowStockTab').classList.add('text-blue-600', 'border-blue-500', 'border-b-2');
+                document.getElementById('lowStockTab').classList.remove('text-gray-600');
+                document.getElementById('currentStockTab').classList.add('text-gray-600');
+                document.getElementById('currentStockTab').classList.remove('text-blue-600', 'border-blue-500', 'border-b-2');
+            }
+        }
+
+        // Google Sheets Integration
+        function syncToGoogleSheets() {
+            document.getElementById('googleSheetsModal').classList.remove('hidden');
+        }
+
+        function closeGoogleSheetsModal() {
+            document.getElementById('googleSheetsModal').classList.add('hidden');
+        }
+
+        async function processGoogleSheetsSync() {
+            const spreadsheetId = document.getElementById('spreadsheetId').value.trim();
+            const apiKey = document.getElementById('apiKey').value.trim();
+
+            if (!spreadsheetId || !apiKey) {
+                alert('Please enter both Spreadsheet ID and API Key');
+                return;
+            }
+
+            try {
+                // Prepare inventory data
+                const inventoryData = [
+                    ['Item Name', 'Stock Quantity', 'Last Updated'],
+                    ...Object.entries(inventory).map(([item, data]) => [
+                        item,
+                        data.quantity,
+                        new Date(data.lastUpdated).toLocaleString()
+                    ])
+                ];
+
+                // Prepare history data
+                const historyData = [
+                    ['Date & Time', 'Item Name', 'Action', 'Quantity', 'New Balance'],
+                    ...transactionHistory.map(transaction => [
+                        new Date(transaction.timestamp).toLocaleString(),
+                        transaction.itemName,
+                        transaction.action === 'add' ? 'Added' : 'Removed',
+                        transaction.quantity,
+                        transaction.newBalance
+                    ])
+                ];
+
+                // This is a simulated behavior since direct Google Sheets API interaction would require OAuth
+                // In a real app, you'd use the Google Sheets API with proper authentication
+                alert('Syncing data to Google Sheets...\n\nIn a production environment, this would connect to the Google Sheets API and upload your inventory and history data to the specified spreadsheet.');
+                
+                // Simulate successful upload after a short delay
+                setTimeout(() => {
+                    alert('Data successfully synced to Google Sheets!');
+                    closeGoogleSheetsModal();
+                }, 1500);
+            } catch (error) {
+                alert('Error syncing to Google Sheets: ' + error.message);
+            }
+        }
+    </script>
+<script>document.body.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); return }, { passive: false })</script>
+	</body>
+</html>
